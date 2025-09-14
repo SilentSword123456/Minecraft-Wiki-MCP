@@ -315,9 +315,29 @@ class WikiService {
       }
 
       if (bestRecipe) {
+        // Format response to match user's requested structure
+        const recipes = [];
+        
+        recipes.push({
+          type: bestRecipe.recipe_type === 'shaped' ? 'crafting_table' : 
+                bestRecipe.recipe_type === 'shapeless' ? 'crafting_table' :
+                bestRecipe.recipe_type === 'smelting' ? 'furnace' : 'crafting_table',
+          pattern: Array.isArray(bestRecipe.pattern) ? bestRecipe.pattern : 
+                   bestRecipe.pattern ? [bestRecipe.pattern] : 
+                   [['', '', ''], ['', '', ''], ['', '', '']], // Default 3x3 empty grid
+          materials: bestRecipe.ingredients.reduce((acc, ingredient) => {
+            acc[ingredient.item] = ingredient.quantity;
+            return acc;
+          }, {} as Record<string, number>),
+          result: bestRecipe.result || {
+            item: formatMCPText(title),
+            count: 1
+          }
+        });
+
         return JSON.stringify({
-          title: formatMCPText(title),
-          crafting_recipe: bestRecipe,
+          item: formatMCPText(title),
+          recipes,
           source_section: bestSection ? {
             index: bestSection.index,
             title: formatMCPText(bestSection.title)
@@ -325,16 +345,16 @@ class WikiService {
         });
       } else {
         return JSON.stringify({
-          title: formatMCPText(title),
-          crafting_recipe: null,
+          item: formatMCPText(title),
+          recipes: [],
           message: "No crafting recipe found for this item",
         });
       }
     } catch (error) {
       return JSON.stringify({
-        title: formatMCPText(title),
+        item: formatMCPText(title),
         error: error instanceof Error ? error.message : "Unknown error",
-        crafting_recipe: null,
+        recipes: [],
       });
     }
   }

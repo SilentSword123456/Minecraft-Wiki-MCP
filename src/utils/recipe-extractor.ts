@@ -9,7 +9,7 @@ export interface RecipeIngredient {
 
 export interface CraftingRecipe {
   ingredients: RecipeIngredient[];
-  pattern?: string;
+  pattern?: string | string[][];
   recipe_type: 'shaped' | 'shapeless' | 'smelting' | 'brewing' | 'unknown';
   result?: {
     item: string;
@@ -47,11 +47,9 @@ export function extractCraftingRecipe(content: string, title: string, sectionInd
       result.crafting_recipe = recipe;
       result.hasRecipe = true;
     }
-  } catch (error) {
+  } catch {
     // If parsing fails, continue without recipe data
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`Failed to parse recipe for ${title}:`, error);
-    }
+    // Silently ignore parsing errors in production
   }
 
   return result;
@@ -72,6 +70,10 @@ function isCraftingSection(content: string): boolean {
     /<table[\s\S]*?quantity[\s\S]*?<\/table>/i, // HTML table with quantity column
     /<tr[\s\S]*?<td[\s\S]*?\d+[\s\S]*?<\/td>/i, // Table row with numeric values
     /\d+\s+[A-Za-z\s]+/,  // Pattern like "3 Obsidian" or "5 Glass"
+    /mcui-input/i, // MCUI HTML structure
+    /mcui-row/i, // MCUI row structure
+    /invslot/i, // Inventory slot structure
+    /data-minetip-title/i, // MCUI item tooltip data
   ];
 
   return craftingIndicators.some(indicator => indicator.test(content));
@@ -81,12 +83,106 @@ function isCraftingSection(content: string): boolean {
  * Parse crafting recipe from wiki content
  */
 function parseCraftingRecipe(content: string): CraftingRecipe | null {
-  // Try different parsing strategies
-  const recipe = parseFromTemplate(content) || 
+  // Try different parsing strategies in order of specificity
+  const recipe = parseFromMcuiHtml(content) ||
+                 parseFromTemplate(content) || 
                  parseFromTable(content) || 
                  parseFromText(content);
 
   return recipe;
+}
+
+/**
+ * Parse recipe from Minecraft Wiki MCUI HTML structure
+ */
+function parseFromMcuiHtml(content: string): CraftingRecipe | null {
+  // Look for the main crafting container
+  if (!content.includes('mcui-input')) {
+    return null;
+  }
+
+  // Extract 3x3 crafting grid pattern
+  const pattern: string[][] = [
+    ['', '', ''],
+    ['', '', ''],
+    ['', '', '']
+  ];
+  
+  const ingredientCounts: Map<string, number> = new Map();
+
+  // Find all data-minetip-title attributes which contain the item names
+  const itemMatches = content.match(/data-minetip-title="([^"]*)"/g) || [];
+  
+  // If we don't find any items, this isn't a valid recipe
+  if (itemMatches.length === 0) {
+    return null;
+  }
+
+  // Extract item names and count occurrences
+  for (const match of itemMatches) {
+    const itemName = match.match(/data-minetip-title="([^"]*)"/)?.[1];
+    if (itemName) {
+      const cleanedName = cleanItemName(decodeHtmlEntities(itemName));
+      if (cleanedName && cleanedName.length > 1) {
+        const currentCount = ingredientCounts.get(cleanedName) || 0;
+        ingredientCounts.set(cleanedName, currentCount + 1);
+      }
+    }
+  }
+
+  // Try to extract the pattern by finding the structure
+  // This is a simplified approach - for a full 3x3 grid we'd need more complex parsing
+  // For now, we'll create a pattern representation based on the items found
+  let itemIndex = 0;
+  for (const match of itemMatches) {
+    if (itemIndex >= 9) break; // Max 9 slots in 3x3 grid
+    
+    const itemName = match.match(/data-minetip-title="([^"]*)"/)?.[1];
+    if (itemName) {
+      const cleanedName = cleanItemName(decodeHtmlEntities(itemName));
+      if (cleanedName && cleanedName.length > 1) {
+        const row = Math.floor(itemIndex / 3);
+        const col = itemIndex % 3;
+        if (row < 3 && col < 3) {
+          pattern[row][col] = cleanedName;
+        }
+      }
+    }
+    itemIndex++;
+  }
+
+  // Convert ingredient counts to RecipeIngredient array
+  const ingredients: RecipeIngredient[] = [];
+  for (const [item, quantity] of ingredientCounts) {
+    ingredients.push({ item, quantity });
+  }
+
+  // Only return a recipe if we found some ingredients
+  if (ingredients.length === 0) {
+    return null;
+  }
+
+  return {
+    ingredients,
+    pattern,
+    recipe_type: 'shaped',
+  };
+}
+
+/**
+ * Decode HTML entities in text
+ */
+function decodeHtmlEntities(text: string): string {
+  const entities: Record<string, string> = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&nbsp;': ' '
+  };
+  
+  return text.replace(/&[#\w]+;/g, (entity) => entities[entity] || entity);
 }
 
 /**

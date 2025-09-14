@@ -314,48 +314,37 @@ class WikiService {
         }
       }
 
+      // Format response exactly as requested by the user
       if (bestRecipe) {
-        // Format response to match user's requested structure
-        const recipes = [];
-        
-        recipes.push({
-          type: bestRecipe.recipe_type === 'shaped' ? 'crafting_table' : 
-                bestRecipe.recipe_type === 'shapeless' ? 'crafting_table' :
-                bestRecipe.recipe_type === 'smelting' ? 'furnace' : 'crafting_table',
-          pattern: Array.isArray(bestRecipe.pattern) ? bestRecipe.pattern : 
-                   bestRecipe.pattern ? [bestRecipe.pattern] : 
-                   [['', '', ''], ['', '', ''], ['', '', '']], // Default 3x3 empty grid
-          materials: bestRecipe.ingredients.reduce((acc, ingredient) => {
-            acc[ingredient.item] = ingredient.quantity;
-            return acc;
-          }, {} as Record<string, number>),
-          result: bestRecipe.result || {
-            item: formatMCPText(title),
-            count: 1
-          }
-        });
+        const craftingRecipeData = {
+          ingredients: bestRecipe.ingredients,
+          recipe_type: bestRecipe.recipe_type,
+          pattern: Array.isArray(bestRecipe.pattern) ? 
+            bestRecipe.pattern.map(row => row.join(' ')).join(' | ') : 
+            (bestRecipe.pattern || 'Standard crafting arrangement')
+        };
 
         return JSON.stringify({
-          item: formatMCPText(title),
-          recipes,
+          title: formatMCPText(title),
+          crafting_recipe: craftingRecipeData,
           source_section: bestSection ? {
             index: bestSection.index,
             title: formatMCPText(bestSection.title)
           } : null,
-        });
+        }, null, 2); // Pretty print JSON with proper escaping
       } else {
         return JSON.stringify({
-          item: formatMCPText(title),
-          recipes: [],
+          title: formatMCPText(title),
+          crafting_recipe: null,
           message: "No crafting recipe found for this item",
-        });
+        }, null, 2);
       }
     } catch (error) {
       return JSON.stringify({
-        item: formatMCPText(title),
+        title: formatMCPText(title),
         error: error instanceof Error ? error.message : "Unknown error",
-        recipes: [],
-      });
+        crafting_recipe: null,
+      }, null, 2);
     }
   }
 }

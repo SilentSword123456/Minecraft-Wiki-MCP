@@ -163,7 +163,7 @@ function parseFromMcuiHtml(content: string): CraftingRecipe | null {
       recipe_type: 'shaped',
     } : null;
     
-  } catch (error) {
+  } catch {
     // If cheerio parsing fails, return null
     return null;
   }
@@ -287,7 +287,7 @@ function parseFromTemplate(content: string): CraftingRecipe | null {
       pattern: recipeType === 'shaped' ? 'Arranged in crafting grid' : undefined
     };
     
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -369,7 +369,7 @@ function parseFromTable(content: string): CraftingRecipe | null {
       pattern: 'Crafting table arrangement'
     } : null;
     
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -450,7 +450,7 @@ function parseFromText(content: string): CraftingRecipe | null {
       pattern: isShapeless ? 'Any arrangement' : 'Specific pattern required'
     };
     
-  } catch (error) {
+  } catch {
     return null;
   }
 }
